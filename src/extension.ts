@@ -20,7 +20,12 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('localVersioner.createSnapshot', () => commandHandler.createSnapshot()),
         vscode.commands.registerCommand('localVersioner.listVersions', () => commandHandler.listVersions()),
         vscode.commands.registerCommand('localVersioner.syncToBackupFolder', () => commandHandler.syncToBackupFolder()),
-        vscode.commands.registerCommand('localVersioner.configureSettings', () => commandHandler.configureSettings())
+        vscode.commands.registerCommand('localVersioner.configureSettings', () => commandHandler.configureSettings()),
+        // Nuevos comandos SSH
+        vscode.commands.registerCommand('localVersioner.configureSSH', () => commandHandler.configureSSH()),
+        vscode.commands.registerCommand('localVersioner.uploadToServer', () => commandHandler.uploadToServer()),
+        vscode.commands.registerCommand('localVersioner.downloadFromServer', () => commandHandler.downloadFromServer()),
+        vscode.commands.registerCommand('localVersioner.showRemoteVersions', () => commandHandler.showRemoteVersions())
     ];
 
     commands.forEach(command => context.subscriptions.push(command));
@@ -33,6 +38,8 @@ async function initializeExtension() {
     try {
         await initializeVersionsFolder();
         await commandHandler.checkFirstTimeSetup();
+        // Nueva funcionalidad: verificar si la carpeta está vacía y ofrecer descarga automática
+        await commandHandler.checkForEmptyProjectSetup();
     } catch (error) {
         console.log('Error during extension initialization:', error);
     }

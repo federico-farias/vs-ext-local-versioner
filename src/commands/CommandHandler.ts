@@ -5,18 +5,21 @@ import { ConfigurationManager, ProjectConfig } from '../config/ConfigurationMana
 import { VersionManager, VersionInfo } from '../version/VersionManager';
 import { FileOperations } from '../file/FileOperations';
 import { UIManager } from '../ui/UIManager';
+import { SSHManager, SSHConfig } from '../ssh/SSHManager';
 
 export class CommandHandler {
     private configManager: ConfigurationManager;
     private versionManager: VersionManager;
     private fileOps: FileOperations;
     private uiManager: UIManager;
+    private sshManager: SSHManager;
 
     constructor() {
         this.configManager = new ConfigurationManager();
         this.versionManager = new VersionManager();
         this.fileOps = new FileOperations();
         this.uiManager = new UIManager();
+        this.sshManager = new SSHManager();
     }
 
     async getWorkspacePath(): Promise<string> {
@@ -212,6 +215,194 @@ export class CommandHandler {
         }
     }
 
+    async checkForEmptyProjectSetup(): Promise<void> {
+        try {
+            const workspacePath = await this.getWorkspacePath();
+            
+            // Verificar si hay archivo de configuración
+            const configExists = await this.configManager.loadProjectConfiguration(workspacePath);
+            if (!configExists || !configExists.sshConfig) {
+                // No hay configuración SSH, no podemos ofrecer descarga
+                return;
+            }
+
+            // Verificar si la carpeta está prácticamente vacía
+            const isEmpty = await this.isProjectFolderEmpty(workspacePath);
+            if (!isEmpty) {
+                // La carpeta tiene contenido, no necesitamos hacer nada
+                return;
+            }
+
+            // Ofrecer descargar la última versión
+            await this.offerLatestVersionDownload(configExists);
+
+        } catch (error) {
+            console.log('Error checking for empty project setup:', error);
+        }
+    }
+
+    private async isProjectFolderEmpty(workspacePath: string): Promise<boolean> {
+        try {
+            const items = fs.readdirSync(workspacePath);
+            
+            // Archivos/carpetas que no cuentan como "contenido del proyecto"
+            const ignoredItems = [
+                '.local-versioner-config.json',
+                '.local-versions',
+                '.vscode',
+                '.git',
+                'node_modules',
+                '.gitignore',
+                'README.md',
+                'LICENSE',
+                '.DS_Store',
+                'Thumbs.db'
+            ];
+
+            // Filtrar solo archivos/carpetas que indican contenido real del proyecto
+            const projectItems = items.filter(item => {
+                // Ignorar archivos ocultos del sistema y configuración
+                if (item.startsWith('.') && !item.startsWith('.env')) {
+                    return false;
+                }
+                
+                // Ignorar elementos específicos
+                if (ignoredItems.includes(item)) {
+                    return false;
+                }
+
+                return true;
+            });
+
+            // Si hay 2 o menos elementos reales, consideramos que está vacía
+            return projectItems.length <= 2;
+
+        } catch (error) {
+            console.log('Error checking if project folder is empty:', error);
+            return false;
+        }
+    }
+
+    private async offerLatestVersionDownload(config: ProjectConfig): Promise<void> {
+        const projectName = config.projectName;
+        const shouldDownload = await vscode.window.showInformationMessage(
+            `🔍 Detección de Proyecto Vacío\n\n` +
+            `Se detectó que el proyecto "${projectName}" está prácticamente vacío, pero tienes ` +
+            `configuración SSH para conectarte al servidor.\n\n` +
+            `¿Te gustaría descargar y restaurar automáticamente la versión más reciente del servidor?`,
+            {
+                modal: true,
+                detail: `Servidor: ${config.sshConfig?.username}@${config.sshConfig?.host}\n` +
+                       `Esto descargará la última versión disponible y la restaurará automáticamente.`
+            },
+            'Sí, descargar última versión',
+            'No, continuar con carpeta vacía'
+        );
+
+        if (shouldDownload === 'Sí, descargar última versión') {
+            await this.downloadAndRestoreLatestVersion();
+        }
+    }
+
+    private async downloadAndRestoreLatestVersion(): Promise<void> {
+        try {
+            const workspacePath = await this.getWorkspacePath();
+            const config = await this.configManager.getConfig();
+            const versionsPath = path.join(workspacePath, config.versionsPath);
+            const projectName = path.basename(workspacePath);
+
+            // Cargar configuración SSH
+            const sshConfig = await this.configManager.loadSSHConfig(workspacePath);
+            if (!sshConfig) {
+                this.uiManager.showErrorMessage('No se encontró configuración SSH válida.');
+                return;
+            }
+
+            this.sshManager.setConfig(sshConfig);
+
+            // Obtener lista de versiones remotas
+            const remoteVersions = await this.uiManager.showProgress('Buscando versiones en servidor...', async (progress) => {
+                progress.report({ increment: 30, message: 'Conectando al servidor...' });
+                const versions = await this.sshManager.listRemoteVersions(projectName);
+                progress.report({ increment: 100, message: `${versions.length} versiones encontradas` });
+                return versions;
+            });
+
+            if (remoteVersions.length === 0) {
+                this.uiManager.showWarningMessage(
+                    `No se encontraron versiones del proyecto "${projectName}" en el servidor.\n\n` +
+                    `Puedes comenzar creando tu primer snapshot con "Crear Snapshot".`
+                );
+                return;
+            }
+
+            // Obtener la versión más reciente (primera en la lista ordenada)
+            const latestVersion = remoteVersions[0];
+
+            const success = await this.uiManager.showProgress(`Descargando y restaurando ${latestVersion}...`, async (progress) => {
+                progress.report({ increment: 0, message: 'Descargando versión más reciente...' });
+                
+                // Descargar la versión específica
+                const downloadResult = await this.sshManager.downloadSingleVersion(versionsPath, projectName, latestVersion);
+                
+                if (!downloadResult) {
+                    return false;
+                }
+
+                progress.report({ increment: 60, message: 'Restaurando archivos...' });
+                
+                // Restaurar automáticamente la versión descargada
+                const versionPath = path.join(versionsPath, latestVersion);
+                await this.fileOps.restoreVersion(versionPath, workspacePath);
+
+                progress.report({ increment: 90, message: 'Actualizando registro local...' });
+                
+                // Actualizar el registro local de versiones
+                await this.updateLocalVersionsAfterDownload(versionsPath, latestVersion);
+
+                progress.report({ increment: 100, message: 'Completado' });
+                return true;
+            });
+
+            if (success) {
+                // Calcular información de la versión restaurada
+                const versionPath = path.join(versionsPath, latestVersion);
+                const size = await this.versionManager.calculateFolderSize(versionPath);
+                const sizeInMB = (size / (1024 * 1024)).toFixed(2);
+
+                this.uiManager.showSuccessMessage(
+                    `✅ ¡Proyecto restaurado exitosamente!\n\n` +
+                    `📦 Versión: ${latestVersion}\n` +
+                    `📁 Proyecto: ${projectName}\n` +
+                    `💾 Tamaño: ${sizeInMB} MB\n` +
+                    `🖥️ Servidor: ${sshConfig.host}\n\n` +
+                    `El proyecto ahora contiene la última versión disponible. ` +
+                    `Puedes continuar trabajando normalmente o usar "Ver Versiones" para explorar el historial.`
+                );
+
+                // Mostrar sugerencia de próximos pasos
+                const nextAction = await vscode.window.showInformationMessage(
+                    '¿Qué te gustaría hacer ahora?',
+                    'Ver todas las versiones disponibles',
+                    'Crear nuevo snapshot',
+                    'Continuar trabajando'
+                );
+
+                if (nextAction === 'Ver todas las versiones disponibles') {
+                    await this.showRemoteVersions();
+                } else if (nextAction === 'Crear nuevo snapshot') {
+                    await this.createSnapshot();
+                }
+
+            } else {
+                this.uiManager.showErrorMessage('Error descargando o restaurando la versión más reciente del servidor.');
+            }
+
+        } catch (error) {
+            this.uiManager.showErrorMessage(`Error en restauración automática: ${(error as Error).message}`);
+        }
+    }
+
     private async createSnapshotProcess(
         workspacePath: string,
         versionsPath: string,
@@ -395,6 +586,315 @@ export class CommandHandler {
         if (!gitignoreContent.includes('.local-versioner-config.json')) {
             gitignoreContent += '\n# Local Versioner configuration\n.local-versioner-config.json\n.local-versions/\n';
             fs.writeFileSync(gitignorePath, gitignoreContent);
+        }
+    }
+
+    async configureSSH(): Promise<void> {
+        try {
+            const workspacePath = await this.getWorkspacePath();
+            
+            this.uiManager.showSuccessMessage('🔧 Configurando conexión SSH al servidor...');
+
+            const sshConfig = await this.sshManager.configureSSH();
+            if (!sshConfig) {
+                this.uiManager.showWarningMessage('Configuración SSH cancelada.');
+                return;
+            }
+
+            // Probar la conexión
+            const testResult = await this.uiManager.showProgress('Probando conexión SSH...', async (progress) => {
+                progress.report({ increment: 50, message: 'Conectando al servidor...' });
+                const result = await this.sshManager.testConnection(sshConfig);
+                progress.report({ increment: 100, message: result ? 'Conexión exitosa' : 'Error de conexión' });
+                return result;
+            });
+
+            if (!testResult) {
+                this.uiManager.showErrorMessage('No se pudo conectar al servidor. Verifica la configuración.');
+                return;
+            }
+
+            // Guardar configuración SSH
+            await this.configManager.saveSSHConfig(workspacePath, sshConfig);
+            this.sshManager.setConfig(sshConfig);
+
+            this.uiManager.showSuccessMessage(
+                `✅ Conexión SSH configurada exitosamente!\n\n` +
+                `Servidor: ${sshConfig.username}@${sshConfig.host}:${sshConfig.port}\n` +
+                `Ruta remota: ${sshConfig.remotePath}\n\n` +
+                `Ya puedes usar los comandos de backup SSH.`
+            );
+
+        } catch (error) {
+            this.uiManager.showErrorMessage(`Error configurando SSH: ${(error as Error).message}`);
+        }
+    }
+
+    async uploadToServer(): Promise<void> {
+        try {
+            const workspacePath = await this.getWorkspacePath();
+            const config = await this.configManager.getConfig();
+            const versionsPath = path.join(workspacePath, config.versionsPath);
+            const projectName = path.basename(workspacePath);
+
+            // Cargar configuración SSH
+            const sshConfig = await this.configManager.loadSSHConfig(workspacePath);
+            if (!sshConfig) {
+                const shouldConfigure = await vscode.window.showWarningMessage(
+                    'No tienes configurada la conexión SSH. ¿Quieres configurarla ahora?',
+                    'Sí, configurar SSH',
+                    'Cancelar'
+                );
+                
+                if (shouldConfigure === 'Sí, configurar SSH') {
+                    await this.configureSSH();
+                    return;
+                }
+                return;
+            }
+
+            this.sshManager.setConfig(sshConfig);
+
+            // Verificar que hay versiones para subir
+            const versions = await this.versionManager.getVersions(versionsPath);
+            if (versions.length === 0) {
+                this.uiManager.showWarningMessage('No hay versiones locales para subir al servidor.');
+                return;
+            }
+
+            const success = await this.uiManager.showProgress('Subiendo versiones al servidor...', async (progress) => {
+                progress.report({ increment: 0, message: 'Conectando al servidor...' });
+                
+                const result = await this.sshManager.uploadVersions(versionsPath, projectName);
+                
+                progress.report({ increment: 100, message: result ? 'Subida completada' : 'Error en la subida' });
+                return result;
+            });
+
+            if (success) {
+                this.uiManager.showSuccessMessage(
+                    `✅ Versiones subidas exitosamente al servidor!\n\n` +
+                    `Proyecto: ${projectName}\n` +
+                    `Versiones: ${versions.length}\n` +
+                    `Servidor: ${sshConfig.host}\n\n` +
+                    `Tu equipo ya puede descargar las últimas versiones.`
+                );
+            } else {
+                this.uiManager.showErrorMessage('Error subiendo versiones al servidor.');
+            }
+
+        } catch (error) {
+            this.uiManager.showErrorMessage(`Error en subida SSH: ${(error as Error).message}`);
+        }
+    }
+
+    async downloadFromServer(): Promise<void> {
+        try {
+            const workspacePath = await this.getWorkspacePath();
+            const config = await this.configManager.getConfig();
+            const versionsPath = path.join(workspacePath, config.versionsPath);
+            const projectName = path.basename(workspacePath);
+
+            // Cargar configuración SSH
+            const sshConfig = await this.configManager.loadSSHConfig(workspacePath);
+            if (!sshConfig) {
+                const shouldConfigure = await vscode.window.showWarningMessage(
+                    'No tienes configurada la conexión SSH. ¿Quieres configurarla ahora?',
+                    'Sí, configurar SSH',
+                    'Cancelar'
+                );
+                
+                if (shouldConfigure === 'Sí, configurar SSH') {
+                    await this.configureSSH();
+                    return;
+                }
+                return;
+            }
+
+            this.sshManager.setConfig(sshConfig);
+
+            // Preguntar si quiere sobrescribir versiones locales
+            const shouldOverwrite = await vscode.window.showWarningMessage(
+                'Esta operación descargará las versiones del servidor y puede sobrescribir tus versiones locales.\n\n¿Quieres continuar?',
+                'Sí, descargar',
+                'Cancelar'
+            );
+
+            if (shouldOverwrite !== 'Sí, descargar') {
+                return;
+            }
+
+            const success = await this.uiManager.showProgress('Descargando versiones del servidor...', async (progress) => {
+                progress.report({ increment: 0, message: 'Conectando al servidor...' });
+                
+                const result = await this.sshManager.downloadVersions(versionsPath, projectName);
+                
+                progress.report({ increment: 100, message: result ? 'Descarga completada' : 'Error en la descarga' });
+                return result;
+            });
+
+            if (success) {
+                const localVersions = await this.versionManager.getVersions(versionsPath);
+                this.uiManager.showSuccessMessage(
+                    `✅ Versiones descargadas exitosamente del servidor!\n\n` +
+                    `Proyecto: ${projectName}\n` +
+                    `Versiones disponibles: ${localVersions.length}\n` +
+                    `Servidor: ${sshConfig.host}\n\n` +
+                    `Puedes usar "Ver Versiones" para explorar las versiones descargadas.`
+                );
+            } else {
+                this.uiManager.showErrorMessage('No se encontraron versiones del proyecto en el servidor o hubo un error en la descarga.');
+            }
+
+        } catch (error) {
+            this.uiManager.showErrorMessage(`Error en descarga SSH: ${(error as Error).message}`);
+        }
+    }
+
+    async showRemoteVersions(): Promise<void> {
+        try {
+            const workspacePath = await this.getWorkspacePath();
+            const projectName = path.basename(workspacePath);
+
+            // Cargar configuración SSH
+            const sshConfig = await this.configManager.loadSSHConfig(workspacePath);
+            if (!sshConfig) {
+                this.uiManager.showWarningMessage('No tienes configurada la conexión SSH. Usa "Configurar SSH" primero.');
+                return;
+            }
+
+            this.sshManager.setConfig(sshConfig);
+
+            const remoteVersions = await this.uiManager.showProgress('Listando versiones remotas...', async (progress) => {
+                progress.report({ increment: 50, message: 'Conectando al servidor...' });
+                
+                const versions = await this.sshManager.listRemoteVersions(projectName);
+                
+                progress.report({ increment: 100, message: `${versions.length} versiones encontradas` });
+                return versions;
+            });
+
+            if (remoteVersions.length === 0) {
+                this.uiManager.showSuccessMessage(`No se encontraron versiones del proyecto "${projectName}" en el servidor.`);
+                return;
+            }
+
+            const items = remoteVersions.map(versionName => ({
+                label: `📦 ${versionName}`,
+                description: 'Versión en servidor',
+                detail: `Servidor: ${sshConfig.host}`,
+                version: versionName
+            }));
+
+            const selectedItem = await vscode.window.showQuickPick(items, {
+                placeHolder: `Versiones de "${projectName}" en el servidor (${remoteVersions.length} versiones)`
+            });
+
+            if (selectedItem) {
+                const action = await vscode.window.showInformationMessage(
+                    `Versión seleccionada: ${selectedItem.version}\n` +
+                    `Proyecto: ${projectName}\n` +
+                    `Servidor: ${sshConfig.username}@${sshConfig.host}:${sshConfig.remotePath}/${projectName}/\n\n` +
+                    `¿Qué quieres hacer?`,
+                    'Descargar solo esta versión',
+                    'Descargar todas las versiones',
+                    'Cerrar'
+                );
+
+                if (action === 'Descargar solo esta versión') {
+                    await this.downloadSingleVersionFromServer(selectedItem.version);
+                } else if (action === 'Descargar todas las versiones') {
+                    await this.downloadFromServer();
+                }
+            }
+
+        } catch (error) {
+            this.uiManager.showErrorMessage(`Error listando versiones remotas: ${(error as Error).message}`);
+        }
+    }
+
+    async downloadSingleVersionFromServer(versionName: string): Promise<void> {
+        try {
+            const workspacePath = await this.getWorkspacePath();
+            const config = await this.configManager.getConfig();
+            const versionsPath = path.join(workspacePath, config.versionsPath);
+            const projectName = path.basename(workspacePath);
+
+            // Cargar configuración SSH
+            const sshConfig = await this.configManager.loadSSHConfig(workspacePath);
+            if (!sshConfig) {
+                this.uiManager.showErrorMessage('No tienes configurada la conexión SSH.');
+                return;
+            }
+
+            this.sshManager.setConfig(sshConfig);
+
+            // Verificar si la versión ya existe localmente
+            const localVersionPath = path.join(versionsPath, versionName);
+            if (fs.existsSync(localVersionPath)) {
+                const shouldOverwrite = await vscode.window.showWarningMessage(
+                    `La versión ${versionName} ya existe localmente. ¿Quieres sobrescribirla?`,
+                    'Sí, sobrescribir',
+                    'Cancelar'
+                );
+                
+                if (shouldOverwrite !== 'Sí, sobrescribir') {
+                    return;
+                }
+            }
+
+            const success = await this.uiManager.showProgress(`Descargando versión ${versionName}...`, async (progress) => {
+                progress.report({ increment: 0, message: 'Conectando al servidor...' });
+                
+                const result = await this.sshManager.downloadSingleVersion(versionsPath, projectName, versionName);
+                
+                progress.report({ increment: 100, message: result ? 'Descarga completada' : 'Error en la descarga' });
+                return result;
+            });
+
+            if (success) {
+                // Actualizar el archivo de versiones locales para incluir la nueva versión descargada
+                await this.updateLocalVersionsAfterDownload(versionsPath, versionName);
+                
+                this.uiManager.showSuccessMessage(
+                    `✅ Versión ${versionName} descargada exitosamente!\n\n` +
+                    `Proyecto: ${projectName}\n` +
+                    `Servidor: ${sshConfig.host}\n\n` +
+                    `Puedes usar "Ver Versiones" para explorar la versión descargada o restaurarla.`
+                );
+            } else {
+                this.uiManager.showErrorMessage(`Error descargando la versión ${versionName} del servidor.`);
+            }
+
+        } catch (error) {
+            this.uiManager.showErrorMessage(`Error descargando versión: ${(error as Error).message}`);
+        }
+    }
+
+    private async updateLocalVersionsAfterDownload(versionsPath: string, versionName: string): Promise<void> {
+        try {
+            const versionPath = path.join(versionsPath, versionName);
+            
+            // Calcular tamaño de la versión descargada
+            const size = await this.versionManager.calculateFolderSize(versionPath);
+            
+            // Crear información de versión basada en el nombre
+            const versionInfo: VersionInfo = {
+                id: versionName,
+                timestamp: new Date().toISOString(), // Usamos timestamp actual para la descarga
+                description: `Versión descargada del servidor: ${versionName}`,
+                filePath: versionPath,
+                size: size,
+                type: versionName.includes('_partial_') ? 'selective' : 'full',
+                selectedFolders: versionName.includes('_partial_') ? ['(carpetas del servidor)'] : undefined
+            };
+
+            // Agregar a las versiones locales
+            await this.versionManager.saveVersionInfo(versionsPath, versionInfo);
+            
+        } catch (error) {
+            // Error no crítico, la descarga fue exitosa pero no se pudo actualizar el registro local
+            console.log('Error updating local version info after download:', error);
         }
     }
 }

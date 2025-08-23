@@ -11,10 +11,20 @@ export interface ExtensionConfig {
     selectedFolders: string[];
 }
 
+export interface SSHConfig {
+    host: string;
+    port: number;
+    username: string;
+    privateKey?: string;
+    password?: string;
+    remotePath: string;
+}
+
 export interface ProjectConfig extends ExtensionConfig {
     projectName: string;
     createdAt: string;
     version: string;
+    sshConfig?: SSHConfig;
 }
 
 export class ConfigurationManager {
@@ -67,6 +77,34 @@ export class ConfigurationManager {
         fs.writeFileSync(configFilePath, JSON.stringify(config, null, 2), 'utf-8');
     }
 
+    async saveSSHConfig(workspacePath: string, sshConfig: SSHConfig): Promise<void> {
+        const existingConfig = await this.loadProjectConfiguration(workspacePath);
+        if (existingConfig) {
+            existingConfig.sshConfig = sshConfig;
+            await this.saveProjectConfiguration(workspacePath, existingConfig);
+        } else {
+            const projectName = path.basename(workspacePath);
+            const basicConfig: ProjectConfig = {
+                projectName,
+                backupFolderPath: '',
+                versionsPath: '.local-versions',
+                excludePatterns: ['node_modules', '.git', '*.log', 'tmp', 'temp'],
+                maxVersions: 50,
+                defaultSnapshotMode: 'ask',
+                selectedFolders: [],
+                createdAt: new Date().toISOString(),
+                version: '1.0.0',
+                sshConfig
+            };
+            await this.saveProjectConfiguration(workspacePath, basicConfig);
+        }
+    }
+
+    async loadSSHConfig(workspacePath: string): Promise<SSHConfig | null> {
+        const config = await this.loadProjectConfiguration(workspacePath);
+        return config?.sshConfig || null;
+    }
+
     formatConfigSummary(config: ProjectConfig): string {
         let summary = '';
         summary += `📁 Carpeta de respaldo: ${config.backupFolderPath || 'Solo almacenamiento local (.local-versions)'}\n`;
@@ -77,7 +115,14 @@ export class ConfigurationManager {
         }
         
         summary += `🗂️ Máximo de versiones: ${config.maxVersions}\n`;
-        summary += `🚫 Patrones excluidos: ${config.excludePatterns.slice(0, 3).join(', ')}${config.excludePatterns.length > 3 ? '...' : ''}`;
+        summary += `🚫 Patrones excluidos: ${config.excludePatterns.slice(0, 3).join(', ')}${config.excludePatterns.length > 3 ? '...' : ''}\n`;
+        
+        if (config.sshConfig) {
+            summary += `🖥️ Servidor SSH: ${config.sshConfig.username}@${config.sshConfig.host}:${config.sshConfig.port}\n`;
+            summary += `📂 Ruta remota: ${config.sshConfig.remotePath}`;
+        } else {
+            summary += `🖥️ Servidor SSH: No configurado`;
+        }
         
         return summary;
     }

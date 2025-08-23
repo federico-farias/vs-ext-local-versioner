@@ -1,7 +1,7 @@
 {
   "name": "local-versioner",
   "displayName": "Local Versioner",
-  "description": "Create local snapshots of your code with manual sync to backup folders (Google Drive, OneDrive, etc.)",
+  "description": "Create local snapshots of your code with manual sync to backup folders (Google Drive, OneDrive, etc.) and SSH servers",
   "version": "1.0.0",
   "publisher": "your-publisher-name",
   "icon": "icon.png",
@@ -18,13 +18,20 @@
     "snapshot",
     "local versioning",
     "google drive",
-    "onedrive"
+    "onedrive",
+    "ssh",
+    "sftp",
+    "server backup"
   ],
   "activationEvents": [
     "onCommand:localVersioner.createSnapshot",
     "onCommand:localVersioner.listVersions",
     "onCommand:localVersioner.syncToBackupFolder",
-    "onCommand:localVersioner.configureSettings"
+    "onCommand:localVersioner.configureSettings",
+    "onCommand:localVersioner.configureSSH",
+    "onCommand:localVersioner.uploadToServer",
+    "onCommand:localVersioner.downloadFromServer",
+    "onCommand:localVersioner.showRemoteVersions"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -52,6 +59,30 @@
         "title": "Configurar Local Versioner",
         "category": "Local Versioner",
         "icon": "$(gear)"
+      },
+      {
+        "command": "localVersioner.configureSSH",
+        "title": "Configurar Servidor SSH",
+        "category": "Local Versioner",
+        "icon": "$(server-environment)"
+      },
+      {
+        "command": "localVersioner.uploadToServer",
+        "title": "Subir Versiones al Servidor",
+        "category": "Local Versioner",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "localVersioner.downloadFromServer",
+        "title": "Descargar Versiones del Servidor",
+        "category": "Local Versioner",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "localVersioner.showRemoteVersions",
+        "title": "Ver Versiones en Servidor",
+        "category": "Local Versioner",
+        "icon": "$(server-process)"
       }
     ],
     "menus": {
@@ -64,6 +95,11 @@
         {
           "command": "localVersioner.syncToBackupFolder",
           "group": "localVersioner@2",
+          "when": "explorerResourceIsFolder"
+        },
+        {
+          "command": "localVersioner.uploadToServer",
+          "group": "localVersioner@3",
           "when": "explorerResourceIsFolder"
         }
       ],
@@ -79,6 +115,18 @@
         },
         {
           "command": "localVersioner.configureSettings"
+        },
+        {
+          "command": "localVersioner.configureSSH"
+        },
+        {
+          "command": "localVersioner.uploadToServer"
+        },
+        {
+          "command": "localVersioner.downloadFromServer"
+        },
+        {
+          "command": "localVersioner.showRemoteVersions"
         }
       ]
     },
@@ -151,7 +199,8 @@
   },
   "dependencies": {
     "archiver": "^5.3.1",
-    "extract-zip": "^2.0.1"
+    "extract-zip": "^2.0.1",
+    "ssh2-sftp-client": "^12.0.1"
   },
   "repository": {
     "type": "git",
