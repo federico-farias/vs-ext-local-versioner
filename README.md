@@ -190,7 +190,7 @@ Este proyecto está licenciado bajo la Licencia MIT - ver el archivo [LICENSE](L
 
 - **Issues**: [GitHub Issues](https://github.com/your-username/local-versioner/issues)
 - **Documentación**: [Wiki del Proyecto](https://github.com/your-username/local-versioner/wiki)
-- **Email**: support@local-versioner.dev
+- **Email**: federico.farias@outlook.com
 
 ---
 
