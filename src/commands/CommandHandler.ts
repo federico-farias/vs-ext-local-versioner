@@ -320,9 +320,9 @@ export class CommandHandler {
 
             this.sshManager.setConfig(sshConfig);
 
-            // Obtener lista de versiones remotas
-            const remoteVersions = await this.uiManager.showProgress('Buscando versiones en servidor...', async (progress) => {
-                progress.report({ increment: 30, message: 'Conectando al servidor...' });
+            // Obtener lista de versiones remotas - operación rápida, progreso simple
+            const remoteVersions = await this.uiManager.showProgress('🔍 Obteniendo lista de versiones del servidor...', async (progress) => {
+                progress.report({ increment: 50, message: 'Consultando servidor...' });
                 const versions = await this.sshManager.listRemoteVersions(projectName);
                 progress.report({ increment: 100, message: `${versions.length} versiones encontradas` });
                 return versions;
@@ -336,36 +336,55 @@ export class CommandHandler {
                 return;
             }
 
-            // Obtener la versión más reciente (primera en la lista ordenada)
+            // Obtener la versión más reciente
             const latestVersion = remoteVersions[0];
 
-            const success = await this.uiManager.showProgress(`Descargando y restaurando ${latestVersion}...`, async (progress) => {
-                progress.report({ increment: 0, message: 'Descargando versión más reciente...' });
+            // Descarga con progreso REAL basado en eventos de SftpClient
+            const success = await this.uiManager.showProgressWithPercentage(`📦 Descargando ${latestVersion}`, async (progress) => {
+                let currentPercentage = 0;
                 
-                // Descargar la versión específica
-                const downloadResult = await this.sshManager.downloadSingleVersion(versionsPath, projectName, latestVersion);
+                const downloadResult = await this.sshManager.downloadSingleVersionWithProgress(
+                    versionsPath, 
+                    projectName, 
+                    latestVersion,
+                    (transferred: number, total: number, filename: string) => {
+                        // Calcular progreso real basado en bytes transferidos
+                        const realPercentage = Math.round((transferred / total) * 70); // 70% para descarga
+                        const increment = realPercentage - currentPercentage;
+                        
+                        if (increment > 0) {
+                            currentPercentage = realPercentage;
+                            const sizeTransferred = (transferred / (1024 * 1024)).toFixed(1);
+                            const sizeTotal = (total / (1024 * 1024)).toFixed(1);
+                            
+                            progress.report({ 
+                                increment: increment, 
+                                message: `⬇️ ${sizeTransferred}MB / ${sizeTotal}MB - ${path.basename(filename)}` 
+                            });
+                        }
+                    }
+                );
                 
                 if (!downloadResult) {
+                    progress.report({ increment: 0, message: '❌ Error en la descarga' });
                     return false;
                 }
 
-                progress.report({ increment: 60, message: 'Restaurando archivos...' });
+                // Restauración - operación real pero rápida
+                progress.report({ increment: 15, message: '🔄 Restaurando archivos en workspace...' });
                 
-                // Restaurar automáticamente la versión descargada
                 const versionPath = path.join(versionsPath, latestVersion);
                 await this.fileOps.restoreVersion(versionPath, workspacePath);
 
-                progress.report({ increment: 90, message: 'Actualizando registro local...' });
-                
-                // Actualizar el registro local de versiones
+                progress.report({ increment: 10, message: '📊 Actualizando registro local...' });
                 await this.updateLocalVersionsAfterDownload(versionsPath, latestVersion);
-
-                progress.report({ increment: 100, message: 'Completado' });
+                
+                progress.report({ increment: 5, message: '✅ Proceso completado' });
                 return true;
             });
 
+            // ...existing success handling code...
             if (success) {
-                // Calcular información de la versión restaurada
                 const versionPath = path.join(versionsPath, latestVersion);
                 const size = await this.versionManager.calculateFolderSize(versionPath);
                 const sizeInMB = (size / (1024 * 1024)).toFixed(2);
@@ -376,11 +395,9 @@ export class CommandHandler {
                     `📁 Proyecto: ${projectName}\n` +
                     `💾 Tamaño: ${sizeInMB} MB\n` +
                     `🖥️ Servidor: ${sshConfig.host}\n\n` +
-                    `El proyecto ahora contiene la última versión disponible. ` +
-                    `Puedes continuar trabajando normalmente o usar "Ver Versiones" para explorar el historial.`
+                    `El proyecto ahora contiene la última versión disponible.`
                 );
 
-                // Mostrar sugerencia de próximos pasos
                 const nextAction = await vscode.window.showInformationMessage(
                     '¿Qué te gustaría hacer ahora?',
                     'Ver todas las versiones disponibles',
@@ -393,7 +410,6 @@ export class CommandHandler {
                 } else if (nextAction === 'Crear nuevo snapshot') {
                     await this.createSnapshot();
                 }
-
             } else {
                 this.uiManager.showErrorMessage('Error descargando o restaurando la versión más reciente del servidor.');
             }

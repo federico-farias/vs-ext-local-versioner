@@ -220,6 +220,35 @@ export class UIManager {
         }, task));
     }
 
+    async showProgressWithPercentage<T>(title: string, task: (progress: vscode.Progress<{message?: string, increment?: number}>) => Promise<T>): Promise<T> {
+        let currentPercentage = 0;
+        
+        return vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: title,
+            cancellable: false
+        }, async (progress) => {
+            const wrappedProgress = {
+                report: (value: {message?: string, increment?: number}) => {
+                    if (value.increment) {
+                        currentPercentage += value.increment;
+                    }
+                    
+                    const message = value.message 
+                        ? `[${Math.round(currentPercentage)}%] ${value.message}`
+                        : `[${Math.round(currentPercentage)}%] En progreso...`;
+                    
+                    progress.report({
+                        message: message,
+                        increment: value.increment
+                    });
+                }
+            };
+            
+            return await task(wrappedProgress);
+        });
+    }
+
     showSuccessMessage(message: string): void {
         vscode.window.showInformationMessage(message);
     }

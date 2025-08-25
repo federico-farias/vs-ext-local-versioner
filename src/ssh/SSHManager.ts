@@ -200,7 +200,12 @@ export class SSHManager {
         }
     }
 
-    async downloadSingleVersion(localVersionsPath: string, projectName: string, versionName: string): Promise<boolean> {
+    async downloadSingleVersionWithProgress(
+        localVersionsPath: string, 
+        projectName: string, 
+        versionName: string, 
+        progressCallback?: (transferred: number, total: number, filename: string) => void
+    ): Promise<boolean> {
         if (!this.config) {
             vscode.window.showErrorMessage('Primero debes configurar la conexión SSH');
             return false;
@@ -233,7 +238,35 @@ export class SSHManager {
                 fs.mkdirSync(localVersionPath, { recursive: true });
             }
 
-            // Descargar solo esta versión específica
+            // Obtener lista de archivos para calcular el progreso
+            const remoteFiles = await this.getRemoteFileList(sftp, remoteVersionPath);
+            const totalSize = remoteFiles.reduce((sum, file) => sum + file.size, 0);
+            let completedFiles = 0;
+            let transferredSize = 0;
+
+            // Configurar eventos de progreso si se proporciona callback
+            if (progressCallback) {
+                sftp.on('download', (info: any) => {
+                    // Buscar el archivo completado en nuestra lista
+                    const fileName = path.basename(info.source || 'archivo');
+                    const completedFile = remoteFiles.find(file => 
+                        file.name.includes(fileName) || fileName.includes(path.basename(file.name))
+                    );
+                    
+                    if (completedFile) {
+                        completedFiles++;
+                        transferredSize += completedFile.size;
+                        progressCallback(transferredSize, totalSize, fileName);
+                    } else {
+                        // Si no encontramos el archivo específico, estimamos un promedio
+                        const avgFileSize = totalSize / remoteFiles.length;
+                        transferredSize += avgFileSize;
+                        progressCallback(transferredSize, totalSize, fileName);
+                    }
+                });
+            }
+
+            // Descargar la carpeta completa con eventos de progreso
             await sftp.downloadDir(remoteVersionPath, localVersionPath);
 
             await sftp.end();
@@ -242,6 +275,33 @@ export class SSHManager {
             vscode.window.showErrorMessage(`Error descargando versión ${versionName}: ${(error as Error).message}`);
             return false;
         }
+    }
+
+    private async getRemoteFileList(sftp: any, remotePath: string): Promise<Array<{name: string, size: number}>> {
+        const fileList: Array<{name: string, size: number}> = [];
+        
+        try {
+            const items = await sftp.list(remotePath);
+            
+            for (const item of items) {
+                if (item.type === '-') { // Es un archivo
+                    fileList.push({ name: item.name, size: item.size });
+                } else if (item.type === 'd') { // Es un directorio
+                    const subPath = `${remotePath}/${item.name}`;
+                    const subFiles = await this.getRemoteFileList(sftp, subPath);
+                    fileList.push(...subFiles);
+                }
+            }
+        } catch (error) {
+            console.log('Error listing remote files:', error);
+        }
+        
+        return fileList;
+    }
+
+    // Mantener el método original para compatibilidad
+    async downloadSingleVersion(localVersionsPath: string, projectName: string, versionName: string): Promise<boolean> {
+        return this.downloadSingleVersionWithProgress(localVersionsPath, projectName, versionName);
     }
 
     async listRemoteVersions(projectName: string): Promise<string[]> {

@@ -24,14 +24,8 @@
     "server backup"
   ],
   "activationEvents": [
-    "onCommand:localVersioner.createSnapshot",
-    "onCommand:localVersioner.listVersions",
-    "onCommand:localVersioner.syncToBackupFolder",
-    "onCommand:localVersioner.configureSettings",
-    "onCommand:localVersioner.configureSSH",
-    "onCommand:localVersioner.uploadToServer",
-    "onCommand:localVersioner.downloadFromServer",
-    "onCommand:localVersioner.showRemoteVersions"
+    "onStartupFinished",
+    "workspaceContains:.local-versioner-config.json"
   ],
   "main": "./out/extension.js",
   "contributes": {
