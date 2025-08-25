@@ -1,12 +1,12 @@
 {
   "name": "local-versioner",
-  "displayName": "Local Versioner",
-  "description": "Create local snapshots of your code with manual sync to backup folders (Google Drive, OneDrive, etc.) and SSH servers",
-  "version": "1.0.0",
-  "publisher": "your-publisher-name",
+  "displayName": "Local Versioner (Beta)",
+  "description": "Create local snapshots of your code with manual sync to backup folders (Google Drive, OneDrive, etc.) and SSH servers. BETA VERSION - Please provide feedback!",
+  "version": "0.9.0-beta",
+  "publisher": "federico-farias",
   "icon": "icon.png",
   "engines": {
-    "vscode": "^1.74.0"
+    "vscode": "^1.103.0"
   },
   "categories": [
     "Other",
@@ -21,7 +21,9 @@
     "onedrive",
     "ssh",
     "sftp",
-    "server backup"
+    "server backup",
+    "beta",
+    "preview"
   ],
   "activationEvents": [
     "onStartupFinished",
@@ -199,11 +201,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-username/local-versioner.git"
+    "url": "https://github.com/federico-farias/local-versioner.git"
   },
   "bugs": {
-    "url": "https://github.com/your-username/local-versioner/issues"
+    "url": "https://github.com/federico-farias/local-versioner/issues"
   },
-  "homepage": "https://github.com/your-username/local-versioner#readme",
+  "homepage": "https://github.com/federico-farias/local-versioner#readme",
   "license": "MIT"
 }

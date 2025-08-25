@@ -1,19 +1,25 @@
-# Local Versioner
+# Local Versioner (Beta)
 
 ![VS Code Extension](https://img.shields.io/badge/VS%20Code-Extension-blue)
-![Version](https://img.shields.io/badge/version-1.0.0-green)
+![Version](https://img.shields.io/badge/version-0.9.0--beta-orange)
 ![License](https://img.shields.io/badge/license-MIT-blue)
+![Status](https://img.shields.io/badge/status-BETA-red)
 
-**Local Versioner** es una extensión de Visual Studio Code que permite crear snapshots locales de tu código con sincronización manual a carpetas de respaldo como Google Drive, OneDrive, etc.
+**Local Versioner** es una extensión de Visual Studio Code que permite crear snapshots locales de tu código con sincronización manual a carpetas de respaldo como Google Drive, OneDrive, etc., y servidores SSH.
+
+> 🚧 **¡VERSIÓN BETA!** Esta es una versión de prueba. Tu feedback es muy valioso para mejorar la extensión. Por favor reporta cualquier problema en [GitHub Issues](https://github.com/federico-farias/local-versioner/issues).
 
 ## 🚀 Características
 
 - **📸 Snapshots Locales**: Crea versiones comprimidas de tu código con timestamps automáticos
+- **🖥️ Sincronización SSH**: Sube y descarga versiones desde servidores remotos
 - **📋 Historial de Versiones**: Visualiza y navega entre todas las versiones guardadas
 - **🔄 Restauración Fácil**: Restaura cualquier versión anterior con un solo clic
 - **☁️ Sincronización Manual**: Copia automáticamente a tu carpeta de respaldo (Google Drive, OneDrive, etc.)
 - **⚙️ Configuración Flexible**: Patrones de exclusión, límite de versiones, rutas personalizadas
 - **🎯 Modos de Snapshot**: Completo, selectivo o preguntar cada vez
+- **🔧 Setup Automático**: Configuración guiada en el primer uso
+- **📂 Detección Inteligente**: Descarga automática para proyectos vacíos
 
 ## 📦 Instalación
 
@@ -133,6 +139,29 @@ tu-proyecto/
 }
 ```
 
+## 🧪 **Beta Testing - ¡Tu Feedback es Importante!**
+
+Esta extensión está en **versión beta** y necesitamos tu ayuda para hacerla mejor:
+
+### ✅ **Funciona bien:**
+- Crear snapshots locales
+- Sincronizar con carpetas de respaldo
+- Restaurar versiones
+- Configuración básica
+
+### 🔍 **Necesitamos feedback sobre:**
+- Rendimiento con proyectos grandes
+- Facilidad de uso de la interfaz
+- Funcionalidades SSH/SFTP
+- Casos de uso específicos
+- Problemas o bugs
+
+### 📝 **Cómo reportar problemas:**
+1. Ve a [GitHub Issues](https://github.com/federico-farias/local-versioner/issues)
+2. Describe el problema detalladamente
+3. Incluye pasos para reproducir
+4. Menciona tu versión de VS Code y sistema operativo
+
 ## 🤝 Contribuir
 
 ¡Las contribuciones son bienvenidas! Por favor lee nuestra [Guía de Contribución](CONTRIBUTING.md).
@@ -186,12 +215,14 @@ Este proyecto está licenciado bajo la Licencia MIT - ver el archivo [LICENSE](L
 - Comunidad de VS Code por la excelente API de extensiones
 - Contribuidores y usuarios que reportan issues y sugerencias
 
-## 📞 Soporte
+## 📞 Soporte y Feedback
 
-- **Issues**: [GitHub Issues](https://github.com/your-username/local-versioner/issues)
-- **Documentación**: [Wiki del Proyecto](https://github.com/your-username/local-versioner/wiki)
+- **Issues y Bugs**: [GitHub Issues](https://github.com/federico-farias/local-versioner/issues)
+- **Sugerencias**: [GitHub Discussions](https://github.com/federico-farias/local-versioner/discussions)
 - **Email**: federico.farias@outlook.com
 
 ---
 
 **¿Te gusta la extensión?** ⭐ ¡Dale una estrella en GitHub y compártela con otros desarrolladores!
+
+**¿Encontraste un bug?** 🐛 ¡Repórtalo para que podamos solucionarlo!

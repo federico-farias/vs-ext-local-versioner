@@ -1,0 +1,44 @@
+# Source files
+src/**
+*.ts
+tsconfig.json
+
+# Dependencies - keep only production deps
+node_modules/**
+!node_modules/archiver/**
+!node_modules/extract-zip/**
+!node_modules/ssh2-sftp-client/**
+!node_modules/readable-stream/**
+!node_modules/async/**
+!node_modules/lazystream/**
+!node_modules/lodash/**
+!node_modules/tar-stream/**
+!node_modules/zip-stream/**
+!node_modules/yauzl/**
+!node_modules/buffer-crc32/**
+!node_modules/fd-slicer/**
+
+# Development files
+.vscode/**
+.github/**
+**/*.test.js
+**/*.spec.js
+test/**
+*.test.*
+*.spec.*
+
+# Documentation (keep main ones)
+CONTRIBUTING.md
+
+# Build artifacts
+*.tsbuildinfo
+*.vsix
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+*.log
+
+# Git
+.git/**
+.gitignore
