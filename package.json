@@ -144,7 +144,8 @@
             ".git",
             "*.log",
             "tmp",
-            "temp"
+            "temp",
+            ".local-versioner-config.json"
           ],
           "description": "Patterns of files/folders to exclude from snapshots"
         },

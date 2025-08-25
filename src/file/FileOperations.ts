@@ -22,14 +22,20 @@ export class FileOperations {
     async copyWorkspaceFiles(sourcePath: string, targetPath: string, excludePatterns: string[]): Promise<void> {
         const shouldExclude = (filePath: string) => {
             const relativePath = path.relative(sourcePath, filePath);
+            const fileName = path.basename(filePath);
+            
             return excludePatterns.some(pattern => {
                 if (pattern.includes('*')) {
                     // Escapar caracteres especiales de regex y convertir * a .*
                     const escapedPattern = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\\\*/g, '.*');
                     const regex = new RegExp(escapedPattern);
-                    return regex.test(relativePath);
+                    return regex.test(relativePath) || regex.test(fileName);
                 }
-                return relativePath.includes(pattern) || relativePath === '.local-versions';
+                // Verificar coincidencia exacta del nombre de archivo o path relativo
+                return relativePath === pattern || 
+                       fileName === pattern || 
+                       relativePath.includes(pattern) ||
+                       relativePath.startsWith(pattern + path.sep);
             });
         };
 
@@ -67,14 +73,20 @@ export class FileOperations {
     async copyFolderContents(sourcePath: string, targetPath: string, excludePatterns: string[]): Promise<void> {
         const shouldExclude = (filePath: string) => {
             const relativePath = path.relative(sourcePath, filePath);
+            const fileName = path.basename(filePath);
+            
             return excludePatterns.some(pattern => {
                 if (pattern.includes('*')) {
                     // Escapar caracteres especiales de regex y convertir * a .*
                     const escapedPattern = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\\\*/g, '.*');
                     const regex = new RegExp(escapedPattern);
-                    return regex.test(relativePath);
+                    return regex.test(relativePath) || regex.test(fileName);
                 }
-                return relativePath.includes(pattern);
+                // Verificar coincidencia exacta del nombre de archivo o path relativo
+                return relativePath === pattern || 
+                       fileName === pattern || 
+                       relativePath.includes(pattern) ||
+                       relativePath.startsWith(pattern + path.sep);
             });
         };
 

@@ -238,8 +238,31 @@ export class SSHManager {
                 fs.mkdirSync(localVersionPath, { recursive: true });
             }
 
-            // Obtener lista de archivos para calcular el progreso
-            const remoteFiles = await this.getRemoteFileList(sftp, remoteVersionPath);
+            // Mostrar progreso mientras se escanean los archivos remotos
+            const remoteFiles = await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: '🔍 Analizando archivos en servidor...',
+                cancellable: false
+            }, async (progress) => {
+                progress.report({ increment: 0, message: 'Escaneando estructura de carpetas...' });
+                
+                let scannedFolders = 0;
+                const files = await this.getRemoteFileListWithProgress(
+                    sftp, 
+                    remoteVersionPath,
+                    (folderCount: number, currentFolder: string) => {
+                        scannedFolders++;
+                        progress.report({ 
+                            increment: Math.min(10, 90 / Math.max(folderCount, 1)),
+                            message: `Analizando: ${path.basename(currentFolder)} (${scannedFolders} carpetas)` 
+                        });
+                    }
+                );
+                
+                progress.report({ increment: 100, message: `✅ ${files.length} archivos encontrados` });
+                return files;
+            });
+
             const totalSize = remoteFiles.reduce((sum, file) => sum + file.size, 0);
             let completedFiles = 0;
             let transferredSize = 0;
@@ -247,7 +270,6 @@ export class SSHManager {
             // Configurar eventos de progreso si se proporciona callback
             if (progressCallback) {
                 sftp.on('download', (info: any) => {
-                    // Buscar el archivo completado en nuestra lista
                     const fileName = path.basename(info.source || 'archivo');
                     const completedFile = remoteFiles.find(file => 
                         file.name.includes(fileName) || fileName.includes(path.basename(file.name))
@@ -258,7 +280,6 @@ export class SSHManager {
                         transferredSize += completedFile.size;
                         progressCallback(transferredSize, totalSize, fileName);
                     } else {
-                        // Si no encontramos el archivo específico, estimamos un promedio
                         const avgFileSize = totalSize / remoteFiles.length;
                         transferredSize += avgFileSize;
                         progressCallback(transferredSize, totalSize, fileName);
@@ -275,6 +296,45 @@ export class SSHManager {
             vscode.window.showErrorMessage(`Error descargando versión ${versionName}: ${(error as Error).message}`);
             return false;
         }
+    }
+
+    private async getRemoteFileListWithProgress(
+        sftp: any, 
+        remotePath: string, 
+        progressCallback?: (folderCount: number, currentFolder: string) => void
+    ): Promise<Array<{name: string, size: number}>> {
+        const fileList: Array<{name: string, size: number}> = [];
+        let folderCount = 0;
+        
+        const scanRecursively = async (currentPath: string): Promise<void> => {
+            try {
+                folderCount++;
+                if (progressCallback) {
+                    progressCallback(folderCount, currentPath);
+                }
+
+                const items = await sftp.list(currentPath);
+                
+                for (const item of items) {
+                    if (item.type === '-') { 
+                        // Es un archivo
+                        fileList.push({ 
+                            name: `${currentPath}/${item.name}`, 
+                            size: item.size 
+                        });
+                    } else if (item.type === 'd') { 
+                        // Es un directorio - escanear recursivamente
+                        const subPath = `${currentPath}/${item.name}`;
+                        await scanRecursively(subPath);
+                    }
+                }
+            } catch (error) {
+                console.log(`Error scanning remote folder ${currentPath}:`, error);
+            }
+        };
+
+        await scanRecursively(remotePath);
+        return fileList;
     }
 
     private async getRemoteFileList(sftp: any, remotePath: string): Promise<Array<{name: string, size: number}>> {

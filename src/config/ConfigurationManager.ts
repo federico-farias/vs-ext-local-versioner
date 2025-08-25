@@ -2,6 +2,16 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 
+// Constante centralizada para patrones de exclusión por defecto
+export const DEFAULT_EXCLUDE_PATTERNS = [
+    'node_modules',
+    '.git',
+    '*.log',
+    'tmp',
+    'temp',
+    '.local-versioner-config.json'
+];
+
 export interface ExtensionConfig {
     backupFolderPath: string;
     versionsPath: string;
@@ -33,7 +43,7 @@ export class ConfigurationManager {
         return {
             backupFolderPath: config.get('backupFolderPath', ''),
             versionsPath: config.get('versionsPath', '.local-versions'),
-            excludePatterns: config.get('excludePatterns', ['node_modules', '.git', '*.log', 'tmp', 'temp']),
+            excludePatterns: config.get('excludePatterns', DEFAULT_EXCLUDE_PATTERNS),
             maxVersions: config.get('maxVersions', 50),
             defaultSnapshotMode: config.get('defaultSnapshotMode', 'ask'),
             selectedFolders: config.get('selectedFolders', [])
@@ -88,7 +98,7 @@ export class ConfigurationManager {
                 projectName,
                 backupFolderPath: '',
                 versionsPath: '.local-versions',
-                excludePatterns: ['node_modules', '.git', '*.log', 'tmp', 'temp'],
+                excludePatterns: DEFAULT_EXCLUDE_PATTERNS,
                 maxVersions: 50,
                 defaultSnapshotMode: 'ask',
                 selectedFolders: [],

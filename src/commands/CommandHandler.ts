@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { ConfigurationManager, ProjectConfig } from '../config/ConfigurationManager';
+import { ConfigurationManager, ProjectConfig, ExtensionConfig, DEFAULT_EXCLUDE_PATTERNS } from '../config/ConfigurationManager';
 import { VersionManager, VersionInfo } from '../version/VersionManager';
 import { FileOperations } from '../file/FileOperations';
 import { UIManager } from '../ui/UIManager';
@@ -32,7 +32,9 @@ export class CommandHandler {
     async createSnapshot(): Promise<void> {
         try {
             const workspacePath = await this.getWorkspacePath();
-            const config = await this.configManager.getConfig();
+            
+            // Combinar configuración de VS Code con configuración del proyecto
+            const config = await this.getMergedConfig(workspacePath);
             const versionsPath = path.join(workspacePath, config.versionsPath);
 
             let snapshotMode = config.defaultSnapshotMode;
@@ -523,7 +525,7 @@ export class CommandHandler {
 
             // 3. Si eligió modo selectivo, configurar las carpetas
             if (snapshotMode.value === 'selective') {
-                const folders = await this.uiManager.selectFolders(workspacePath, ['node_modules', '.git', 'tmp', 'temp']);
+                const folders = await this.uiManager.selectFolders(workspacePath, DEFAULT_EXCLUDE_PATTERNS);
                 
                 if (!folders || folders.length === 0) {
                     const fallbackMode = await vscode.window.showWarningMessage(
@@ -551,7 +553,7 @@ export class CommandHandler {
                 projectName: projectName,
                 backupFolderPath: finalBackupPath,
                 versionsPath: '.local-versions',
-                excludePatterns: ['node_modules', '.git', '*.log', 'tmp', 'temp', '.local-versions'],
+                excludePatterns: DEFAULT_EXCLUDE_PATTERNS,
                 maxVersions: 50,
                 defaultSnapshotMode: snapshotMode.value,
                 selectedFolders: selectedFolders,
@@ -912,5 +914,29 @@ export class CommandHandler {
             // Error no crítico, la descarga fue exitosa pero no se pudo actualizar el registro local
             console.log('Error updating local version info after download:', error);
         }
+    }
+
+    // Nuevo método para combinar configuraciones
+    private async getMergedConfig(workspacePath: string): Promise<ExtensionConfig> {
+        // Obtener configuración base de VS Code
+        const baseConfig = await this.configManager.getConfig();
+        
+        // Intentar cargar configuración del proyecto
+        const projectConfig = await this.configManager.loadProjectConfiguration(workspacePath);
+        
+        // Si existe configuración del proyecto, usar sus valores
+        if (projectConfig) {
+            return {
+                backupFolderPath: projectConfig.backupFolderPath || baseConfig.backupFolderPath,
+                versionsPath: projectConfig.versionsPath || baseConfig.versionsPath,
+                excludePatterns: projectConfig.excludePatterns || baseConfig.excludePatterns,
+                maxVersions: projectConfig.maxVersions || baseConfig.maxVersions,
+                defaultSnapshotMode: projectConfig.defaultSnapshotMode || baseConfig.defaultSnapshotMode,
+                selectedFolders: projectConfig.selectedFolders || baseConfig.selectedFolders
+            };
+        }
+        
+        // Si no hay configuración del proyecto, usar solo la de VS Code
+        return baseConfig;
     }
 }
