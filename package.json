@@ -2,8 +2,8 @@
   "name": "local-versioner",
   "displayName": "Local Versioner (Beta)",
   "description": "Create local snapshots of your code with manual sync to backup folders (Google Drive, OneDrive, etc.) and SSH servers. BETA VERSION - Please provide feedback!",
-  "version": "0.9.0-beta",
-  "publisher": "federico-farias",
+  "version": "0.9.0",
+  "publisher": "FedericoFarias",
   "icon": "icon.png",
   "engines": {
     "vscode": "^1.103.0"
