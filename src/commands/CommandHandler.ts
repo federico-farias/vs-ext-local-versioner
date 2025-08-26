@@ -939,4 +939,172 @@ export class CommandHandler {
         // Si no hay configuración del proyecto, usar solo la de VS Code
         return baseConfig;
     }
+
+    async downloadAndRestoreLatest(): Promise<void> {
+        try {
+            const workspacePath = await this.getWorkspacePath();
+            const config = await this.configManager.getConfig();
+            const versionsPath = path.join(workspacePath, config.versionsPath);
+            const projectName = path.basename(workspacePath);
+
+            // Cargar configuración SSH
+            const sshConfig = await this.configManager.loadSSHConfig(workspacePath);
+            if (!sshConfig) {
+                const shouldConfigure = await vscode.window.showWarningMessage(
+                    'No tienes configurada la conexión SSH. ¿Quieres configurarla ahora?',
+                    'Sí, configurar SSH',
+                    'Cancelar'
+                );
+                
+                if (shouldConfigure === 'Sí, configurar SSH') {
+                    await this.configureSSH();
+                    return;
+                }
+                return;
+            }
+
+            this.sshManager.setConfig(sshConfig);
+
+            // Confirmar la acción con advertencia
+            const confirmed = await vscode.window.showWarningMessage(
+                `🚨 Descargar y Restaurar Última Versión\n\n` +
+                `Esta acción descargará la versión más reciente del servidor y ` +
+                `SOBRESCRIBIRÁ todos los archivos actuales en tu workspace.\n\n` +
+                `Proyecto: ${projectName}\n` +
+                `Servidor: ${sshConfig.username}@${sshConfig.host}\n\n` +
+                `⚠️ Se perderán los cambios no guardados. ¿Continuar?`,
+                {
+                    modal: true,
+                    detail: 'Esta operación no se puede deshacer. Considera crear un snapshot antes de continuar.'
+                },
+                'Sí, descargar y restaurar',
+                'Crear snapshot primero'
+            );
+
+            if (confirmed === 'Crear snapshot primero') {
+                await this.createSnapshot();
+                return;
+            } else if (confirmed !== 'Sí, descargar y restaurar') {
+                return;
+            }
+
+            // Obtener lista de versiones remotas
+            const remoteVersions = await this.uiManager.showProgress('🔍 Obteniendo versiones del servidor...', async (progress) => {
+                progress.report({ increment: 50, message: 'Consultando servidor...' });
+                const versions = await this.sshManager.listRemoteVersions(projectName);
+                progress.report({ increment: 100, message: `${versions.length} versiones encontradas` });
+                return versions;
+            });
+
+            if (remoteVersions.length === 0) {
+                this.uiManager.showWarningMessage(
+                    `No se encontraron versiones del proyecto "${projectName}" en el servidor.\n\n` +
+                    `Asegúrate de que el proyecto tenga versiones subidas al servidor.`
+                );
+                return;
+            }
+
+            // Obtener la versión más reciente (primera en la lista)
+            const latestVersion = remoteVersions[0];
+
+            // Mostrar información de la versión a descargar
+            const proceedWithLatest = await vscode.window.showInformationMessage(
+                `📦 Última versión encontrada: ${latestVersion}\n\n` +
+                `Se descargará y restaurará automáticamente en tu workspace.\n` +
+                `¿Proceder con la descarga?`,
+                'Sí, descargar',
+                'Ver todas las versiones',
+                'Cancelar'
+            );
+
+            if (proceedWithLatest === 'Ver todas las versiones') {
+                await this.showRemoteVersions();
+                return;
+            } else if (proceedWithLatest !== 'Sí, descargar') {
+                return;
+            }
+
+            // Descarga y restauración con progreso detallado
+            const success = await this.uiManager.showProgressWithPercentage(`📦 Descargando y restaurando ${latestVersion}`, async (progress) => {
+                let currentPercentage = 0;
+                
+                // Fase 1: Descarga (70% del progreso)
+                const downloadResult = await this.sshManager.downloadSingleVersionWithProgress(
+                    versionsPath, 
+                    projectName, 
+                    latestVersion,
+                    (transferred: number, total: number, filename: string) => {
+                        const realPercentage = Math.round((transferred / total) * 70);
+                        const increment = realPercentage - currentPercentage;
+                        
+                        if (increment > 0) {
+                            currentPercentage = realPercentage;
+                            const sizeTransferred = (transferred / (1024 * 1024)).toFixed(1);
+                            const sizeTotal = (total / (1024 * 1024)).toFixed(1);
+                            
+                            progress.report({ 
+                                increment: increment, 
+                                message: `⬇️ Descargando: ${sizeTransferred}MB / ${sizeTotal}MB` 
+                            });
+                        }
+                    }
+                );
+                
+                if (!downloadResult) {
+                    progress.report({ increment: 0, message: '❌ Error en la descarga' });
+                    return false;
+                }
+
+                // Fase 2: Restauración (25% del progreso)
+                progress.report({ increment: 15, message: '🔄 Restaurando archivos en workspace...' });
+                
+                const versionPath = path.join(versionsPath, latestVersion);
+                await this.fileOps.restoreVersion(versionPath, workspacePath);
+
+                // Fase 3: Actualización de registro (5% del progreso)
+                progress.report({ increment: 10, message: '📊 Actualizando registro local...' });
+                await this.updateLocalVersionsAfterDownload(versionsPath, latestVersion);
+                
+                progress.report({ increment: 5, message: '✅ Proceso completado' });
+                return true;
+            });
+
+            if (success) {
+                const versionPath = path.join(versionsPath, latestVersion);
+                const size = await this.versionManager.calculateFolderSize(versionPath);
+                const sizeInMB = (size / (1024 * 1024)).toFixed(2);
+
+                this.uiManager.showSuccessMessage(
+                    `✅ ¡Última versión restaurada exitosamente!\n\n` +
+                    `📦 Versión: ${latestVersion}\n` +
+                    `📁 Proyecto: ${projectName}\n` +
+                    `💾 Tamaño: ${sizeInMB} MB\n` +
+                    `🖥️ Servidor: ${sshConfig.host}\n\n` +
+                    `Tu workspace ahora contiene la última versión del servidor.`
+                );
+
+                // Ofrecer acciones siguientes
+                const nextAction = await vscode.window.showInformationMessage(
+                    '¿Qué te gustaría hacer ahora?',
+                    'Ver historial completo',
+                    'Crear nuevo snapshot',
+                    'Subir cambios al servidor',
+                    'Continuar trabajando'
+                );
+
+                if (nextAction === 'Ver historial completo') {
+                    await this.showRemoteVersions();
+                } else if (nextAction === 'Crear nuevo snapshot') {
+                    await this.createSnapshot();
+                } else if (nextAction === 'Subir cambios al servidor') {
+                    await this.uploadToServer();
+                }
+            } else {
+                this.uiManager.showErrorMessage('Error descargando o restaurando la última versión del servidor.');
+            }
+
+        } catch (error) {
+            this.uiManager.showErrorMessage(`Error en descarga de última versión: ${(error as Error).message}`);
+        }
+    }
 }

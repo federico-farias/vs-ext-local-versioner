@@ -26,8 +26,17 @@
     "preview"
   ],
   "activationEvents": [
-    "onStartupFinished",
-    "workspaceContains:.local-versioner-config.json"
+    "onCommand:localVersioner.createSnapshot",
+    "onCommand:localVersioner.listVersions", 
+    "onCommand:localVersioner.syncToBackupFolder",
+    "onCommand:localVersioner.configureSettings",
+    "onCommand:localVersioner.configureSSH",
+    "onCommand:localVersioner.uploadToServer",
+    "onCommand:localVersioner.downloadFromServer",
+    "onCommand:localVersioner.showRemoteVersions",
+    "onCommand:localVersioner.downloadAndRestoreLatest",
+    "workspaceContains:.local-versioner-config.json",
+    "onStartupFinished"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -79,6 +88,12 @@
         "title": "Ver Versiones en Servidor",
         "category": "Local Versioner",
         "icon": "$(server-process)"
+      },
+      {
+        "command": "localVersioner.downloadAndRestoreLatest",
+        "title": "Descargar y Restaurar Última Versión",
+        "category": "Local Versioner",
+        "icon": "$(cloud-download)"
       }
     ],
     "menus": {
@@ -123,6 +138,9 @@
         },
         {
           "command": "localVersioner.showRemoteVersions"
+        },
+        {
+          "command": "localVersioner.downloadAndRestoreLatest"
         }
       ]
     },

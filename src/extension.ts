@@ -25,7 +25,8 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('localVersioner.configureSSH', () => commandHandler.configureSSH()),
         vscode.commands.registerCommand('localVersioner.uploadToServer', () => commandHandler.uploadToServer()),
         vscode.commands.registerCommand('localVersioner.downloadFromServer', () => commandHandler.downloadFromServer()),
-        vscode.commands.registerCommand('localVersioner.showRemoteVersions', () => commandHandler.showRemoteVersions())
+        vscode.commands.registerCommand('localVersioner.showRemoteVersions', () => commandHandler.showRemoteVersions()),
+        vscode.commands.registerCommand('localVersioner.downloadAndRestoreLatest', () => commandHandler.downloadAndRestoreLatest())
     ];
 
     commands.forEach(command => context.subscriptions.push(command));
