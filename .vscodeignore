@@ -1,33 +1,27 @@
-# Source files (no longer needed in production)
+# Source files (no longer needed - webpack bundles everything)
 src/**
 *.ts
 tsconfig.json
 webpack.config.js
 
-# Include ALL production dependencies (easier approach)
-# Only exclude development dependencies and build artifacts
-node_modules/@types/**
-node_modules/@typescript-eslint/**
-node_modules/@vscode/**
-node_modules/typescript/**
-node_modules/eslint/**
-node_modules/vsce/**
+# All node_modules (webpack bundles dependencies)
+node_modules/**
 
-# Development files
+# Development and build files
 .vscode/**
 .github/**
+out/**
 **/*.test.js
 **/*.spec.js
 test/**
 *.test.*
 *.spec.*
-*.map
+*.tsbuildinfo
 
-# Documentation (keep essential only)
+# Documentation
 CONTRIBUTING.md
 
-# Build artifacts
-*.tsbuildinfo
+# Build artifacts (keep only the final bundle)
 local-versioner-*.vsix
 
 # OS and editor files
