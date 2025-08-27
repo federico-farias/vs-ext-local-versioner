@@ -1,22 +1,17 @@
-# Source files
+# Source files (no longer needed in production)
 src/**
 *.ts
 tsconfig.json
+webpack.config.js
 
-# Dependencies - keep only production deps
-node_modules/**
-!node_modules/archiver/**
-!node_modules/extract-zip/**
-!node_modules/ssh2-sftp-client/**
-!node_modules/readable-stream/**
-!node_modules/async/**
-!node_modules/lazystream/**
-!node_modules/lodash/**
-!node_modules/tar-stream/**
-!node_modules/zip-stream/**
-!node_modules/yauzl/**
-!node_modules/buffer-crc32/**
-!node_modules/fd-slicer/**
+# Include ALL production dependencies (easier approach)
+# Only exclude development dependencies and build artifacts
+node_modules/@types/**
+node_modules/@typescript-eslint/**
+node_modules/@vscode/**
+node_modules/typescript/**
+node_modules/eslint/**
+node_modules/vsce/**
 
 # Development files
 .vscode/**
@@ -26,13 +21,14 @@ node_modules/**
 test/**
 *.test.*
 *.spec.*
+*.map
 
-# Documentation (keep main ones)
+# Documentation (keep essential only)
 CONTRIBUTING.md
 
 # Build artifacts
 *.tsbuildinfo
-*.vsix
+local-versioner-*.vsix
 
 # OS and editor files
 .DS_Store
